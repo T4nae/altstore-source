@@ -1,0 +1,59 @@
+name: Add/Update AltStore Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: 'IPA download URL'
+        required: true
+        type: string
+      app_name:
+        description: 'App name (optional)'
+        required: false
+      developer_name:
+        description: 'Developer name (optional)'
+        required: false
+
+jobs:
+  update:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download IPA
+        run: curl -L "${{ github.event.inputs.ipa_url }}" -o app.ipa
+
+      - name: Extract metadata
+        run: |
+          unzip -q app.ipa "Payload/*.app/Info.plist" || exit 1
+          BUNDLE=$(plutil -extract CFBundleIdentifier raw Payload/*.app/Info.plist -o - 2>/dev/null || echo "")
+          VERSION=$(plutil -extract CFBundleShortVersionString raw -o - 2>/dev/null || echo "")
+          BUILD=$(plutil -extract CFBundleVersion raw -o - 2>/dev/null || echo "1")
+          APP_NAME=$(plutil -extract CFBundleDisplayName raw -o - 2>/dev/null || plutil -extract CFBundleName raw -o - 2>/dev/null || echo "${{ github.event.inputs.app_name || 'App' }}")
+          DEVELOPER="${{ github.event.inputs.developer_name || 'Developer' }}"
+          SIZE=$(wc -c < app.ipa | tr -d ' ')
+          MINOS=$(plutil -extract MinimumOSVersion raw Payload/*.app/Info.plist -o - 2>/dev/null || echo "12.0")
+          DATE=$(date -u +%Y-%m-%d)
+          echo "BUNDLE=$BUNDLE" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUILD=$BUILD" >> $GITHUB_ENV
+          echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
+          echo "DEVELOPER=$DEVELOPER" >> $GITHUB_ENV
+          echo "SIZE=$SIZE" >> $GITHUB_ENV
+          echo "MINOS=$MINOS" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+      - name: Update source.json
+        run: |
+          if [ -z "$BUNDLE" ] || [ -z "$VERSION" ]; then echo "Missing metadata"; exit 1; fi
+          NEW_VERSION="{\"version\":\"$VERSION\",\"buildVersion\":\"$BUILD\",\"date\":\"$DATE\",\"downloadURL\":\"${{ github.event.inputs.ipa_url }}\",\"size\":$SIZE,\"minOSVersion\":\"$MINOS\"}"
+          jq --arg bundle "$BUNDLE" --arg name "$APP_NAME" --arg dev "$DEVELOPER" --argjson new "$NEW_VERSION" \
+            'if (.apps | any(.bundleIdentifier == $bundle)) then .apps |= map(if .bundleIdentifier == $bundle then .versions = [$new] + .versions else . end) else .apps += [{"name":$name,"bundleIdentifier":$bundle,"developerName":$dev,"iconURL":"","versions":[$new]}] end' \
+            source.json > tmp.json && mv tmp.json source.json
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "v${{ env.VERSION }} for ${{ env.APP_NAME }} (${{ env.BUNDLE }})"
+          file_pattern: source.json
