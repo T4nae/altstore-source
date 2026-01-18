@@ -188,6 +188,7 @@ jobs:
                      localizedDescription: $description,
                      size: $size,
                      beta: false,
+                     screenshotURLs: (.screenshotURLs // []),
                      versions: ([$versionObj] + .versions)
                    } +
                    (if $iconURL != "" then {iconURL: $iconURL} else {} end) +
