@@ -15,6 +15,26 @@ on:
         description: 'Developer name (optional)'
         required: false
         type: string
+      subtitle:
+        description: 'App subtitle (optional)'
+        required: false
+        type: string
+      description:
+        description: 'Full app description (optional)'
+        required: false
+        type: string
+      version_description:
+        description: 'Release notes for this version (optional)'
+        required: false
+        type: string
+      category:
+        description: 'App category (e.g., photo-video, utilities, entertainment) (optional)'
+        required: false
+        type: string
+      tint_color:
+        description: 'App tint color in hex format (e.g., 007AFF) (optional)'
+        required: false
+        type: string
 
 jobs:
   update:
@@ -47,41 +67,158 @@ jobs:
           else
             DEVELOPER="Developer"
           fi
+          # Get optional inputs
+          SUBTITLE="${{ github.event.inputs.subtitle }}"
+          DESCRIPTION="${{ github.event.inputs.description }}"
+          VERSION_DESC="${{ github.event.inputs.version_description }}"
+          CATEGORY="${{ github.event.inputs.category }}"
+          TINT_COLOR="${{ github.event.inputs.tint_color }}"
+          
           SIZE=$(wc -c < app.ipa | tr -d ' ')
           MINOS=$(plutil -extract MinimumOSVersion raw Payload/*.app/Info.plist -o - 2>/dev/null || echo "12.0")
           DATE=$(date -u +%Y-%m-%d)
+          
+          # Extract app icon
+          ICON_FILES=$(plutil -extract CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconFiles raw Payload/*.app/Info.plist -o - 2>/dev/null || echo "")
+          if [ -z "$ICON_FILES" ]; then
+            ICON_FILES=$(plutil -extract CFBundleIconFiles raw Payload/*.app/Info.plist -o - 2>/dev/null || echo "")
+          fi
+          
+          # Try to find the best icon (largest @2x or @3x)
+          ICON_FILE=""
+          for ext in .png ""; do
+            for suffix in "@3x" "@2x" ""; do
+              if [ -n "$ICON_FILES" ]; then
+                # Try each icon name from the array
+                for icon_name in AppIcon60x60 AppIcon76x76 AppIcon; do
+                  test_file="Payload/*.app/${icon_name}${suffix}${ext}"
+                  if ls $test_file 2>/dev/null | head -1 | grep -q .; then
+                    ICON_FILE=$(ls $test_file 2>/dev/null | head -1)
+                    break 3
+                  fi
+                done
+              fi
+            done
+          done
+          
+          # If no specific icon found, try to find any PNG in the app bundle
+          if [ -z "$ICON_FILE" ]; then
+            ICON_FILE=$(find Payload/*.app -name "*.png" -type f | head -1)
+          fi
+          
+          # Create icons directory and copy icon
+          ICON_URL=""
+          if [ -n "$ICON_FILE" ] && [ -f "$ICON_FILE" ]; then
+            mkdir -p "icons/${BUNDLE}"
+            cp "$ICON_FILE" "icons/${BUNDLE}/icon.png"
+            ICON_URL="https://raw.githubusercontent.com/T4nae/altstore-source/main/icons/${BUNDLE}/icon.png"
+          fi
+          
           echo "BUNDLE=$BUNDLE" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUILD=$BUILD" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "DEVELOPER=$DEVELOPER" >> $GITHUB_ENV
+          echo "SUBTITLE=$SUBTITLE" >> $GITHUB_ENV
+          echo "DESCRIPTION=$DESCRIPTION" >> $GITHUB_ENV
+          echo "VERSION_DESC=$VERSION_DESC" >> $GITHUB_ENV
+          echo "CATEGORY=$CATEGORY" >> $GITHUB_ENV
+          echo "TINT_COLOR=$TINT_COLOR" >> $GITHUB_ENV
           echo "SIZE=$SIZE" >> $GITHUB_ENV
           echo "MINOS=$MINOS" >> $GITHUB_ENV
           echo "DATE=$DATE" >> $GITHUB_ENV
+          echo "ICON_URL=$ICON_URL" >> $GITHUB_ENV
 
       - name: Update source.json
         run: |
           if [ -z "$BUNDLE" ] || [ -z "$VERSION" ]; then echo "Missing metadata"; exit 1; fi
-          NEW_VERSION=$(jq -nc \
+          
+          # Create version object for versions array
+          VERSION_OBJ=$(jq -nc \
             --arg version "$VERSION" \
-            --arg buildVersion "$BUILD" \
             --arg date "$DATE" \
             --arg downloadURL "${{ github.event.inputs.ipa_url }}" \
             --arg size "$SIZE" \
             --arg minOSVersion "$MINOS" \
-            '{version:$version, buildVersion:$buildVersion, date:$date, downloadURL:$downloadURL, size: ($size|tonumber), minOSVersion:$minOSVersion}')
+            --arg versionDesc "$VERSION_DESC" \
+            '{
+              version: $version,
+              date: $date,
+              localizedDescription: $versionDesc,
+              downloadURL: $downloadURL,
+              size: ($size|tonumber),
+              minOSVersion: $minOSVersion
+            }')
+          
+          # Use default tint color if not provided
+          FINAL_TINT_COLOR="${TINT_COLOR:-007AFF}"
+          
+          # Update or add app in source.json
           jq --arg bundle "$BUNDLE" \
              --arg name "$APP_NAME" \
              --arg dev "$DEVELOPER" \
-             --argjson new "$NEW_VERSION" \
-             'if .apps | any(.bundleIdentifier == $bundle)
-                then .apps |= map(if .bundleIdentifier == $bundle
-                                  then .versions = [$new] + ([.versions[]] // []) | . 
-                                  else . end)
-                else .apps += [{"name":$name,"bundleIdentifier":$bundle,"developer":$dev,"versions":[$new]}]
-              end' source.json > tmp.json && mv tmp.json source.json
+             --arg subtitle "$SUBTITLE" \
+             --arg description "$DESCRIPTION" \
+             --arg iconURL "$ICON_URL" \
+             --arg tintColor "$FINAL_TINT_COLOR" \
+             --arg category "$CATEGORY" \
+             --arg version "$VERSION" \
+             --arg date "$DATE" \
+             --arg versionDesc "$VERSION_DESC" \
+             --arg downloadURL "${{ github.event.inputs.ipa_url }}" \
+             --argjson size "$SIZE" \
+             --argjson versionObj "$VERSION_OBJ" \
+             '
+             # Helper function to check if app exists
+             def appExists: .apps | any(.bundleIdentifier == $bundle);
+             
+             # Update existing app or add new app
+             if appExists then
+               .apps |= map(
+                 if .bundleIdentifier == $bundle then
+                   . +
+                   {
+                     name: $name,
+                     developerName: $dev,
+                     subtitle: $subtitle,
+                     version: $version,
+                     versionDate: $date,
+                     versionDescription: $versionDesc,
+                     downloadURL: $downloadURL,
+                     localizedDescription: $description,
+                     size: $size,
+                     beta: false,
+                     versions: ([$versionObj] + .versions)
+                   } +
+                   (if $iconURL != "" then {iconURL: $iconURL} else {} end) +
+                   (if $tintColor != "" then {tintColor: $tintColor} else {} end) +
+                   (if $category != "" then {category: $category} else {} end)
+                 else
+                   .
+                 end
+               )
+             else
+               .apps += ([{
+                 name: $name,
+                 bundleIdentifier: $bundle,
+                 developerName: $dev,
+                 subtitle: $subtitle,
+                 version: $version,
+                 versionDate: $date,
+                 versionDescription: $versionDesc,
+                 downloadURL: $downloadURL,
+                 localizedDescription: $description,
+                 iconURL: $iconURL,
+                 tintColor: $tintColor,
+                 size: $size,
+                 beta: false,
+                 screenshotURLs: [],
+                 versions: [$versionObj]
+               } + (if $category != "" then {category: $category} else {} end)])
+             end
+             ' source.json > tmp.json && mv tmp.json source.json
 
       - uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "v${{ env.VERSION }} for ${{ env.APP_NAME }} (${{ env.BUNDLE }})"
-          file_pattern: source.json
+          file_pattern: "source.json icons/"
