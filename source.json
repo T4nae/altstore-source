@@ -2,5 +2,21 @@
   "name": "Tanay's AltStore Source",
   "subtitle": "for personal use",
   "description": "Collection of IPA's for personal use",
-  "apps": []
+  "apps": [
+    {
+      "name": "YouTube",
+      "bundleIdentifier": "com.google.ios.youtube",
+      "developer": "Developer",
+      "versions": [
+        {
+          "version": "21.02.3",
+          "buildVersion": "21.02.3",
+          "date": "2026-01-18",
+          "downloadURL": "https://github.com/T4nae/YTLite/releases/download/ytp-1/YouTubePlus_5.2b4.ipa",
+          "size": 125050676,
+          "minOSVersion": "16.0"
+        }
+      ]
+    }
+  ]
 }
