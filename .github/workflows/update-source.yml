@@ -1,4 +1,4 @@
-name: Add/Update AltStore Version
+name: Add/Update to AltStore source
 
 on:
   workflow_dispatch: 
