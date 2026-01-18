@@ -1,22 +1,41 @@
 {
   "name": "Tanay's AltStore Source",
+  "identifier": "com.t4nae.altstore.source",
+  "website": "https://github.com/T4nae/altstore-source",
   "subtitle": "for personal use",
   "description": "Collection of IPA's for personal use",
+  "sourceURL": "https://raw.githubusercontent.com/T4nae/altstore-source/main/source.json",
+  "tintColor": "007AFF",
+  "iconURL": "",
+  "headerURL": "",
   "apps": [
     {
       "name": "YouTube",
       "bundleIdentifier": "com.google.ios.youtube",
-      "developer": "Developer",
+      "developerName": "Developer",
+      "subtitle": "",
+      "version": "21.02.3",
+      "versionDate": "2026-01-18",
+      "versionDescription": "",
+      "downloadURL": "https://github.com/T4nae/YTLite/releases/download/ytp-1/YouTubePlus_5.2b4.ipa",
+      "localizedDescription": "",
+      "iconURL": "",
+      "tintColor": "007AFF",
+      "size": 125050676,
+      "screenshotURLs": [],
+      "beta": false,
       "versions": [
         {
           "version": "21.02.3",
-          "buildVersion": "21.02.3",
           "date": "2026-01-18",
+          "localizedDescription": "",
           "downloadURL": "https://github.com/T4nae/YTLite/releases/download/ytp-1/YouTubePlus_5.2b4.ipa",
           "size": 125050676,
           "minOSVersion": "16.0"
         }
       ]
     }
-  ]
+  ],
+  "news": [],
+  "userInfo": {}
 }
